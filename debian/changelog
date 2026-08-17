@@ -1,3 +1,10 @@
+edk2-cix (1.3.1-1) main; urgency=medium
+
+  * Add an Orion O6 UEFI option to skip LSI/Broadcom HBA Option ROM probing.
+  * Document that the workaround and release were generated with AI assistance.
+
+ -- "Radxa Computer Co., Ltd" <dev@radxa.com>  Mon, 17 Aug 2026 13:17:06 +0200
+
 edk2-cix (1.3.1) main; urgency=medium
 
   [ github-actions[bot] ]

@@ -10,8 +10,12 @@ src/tools/gcc/%: src/tools/gcc/%.tar.xz
 
 build: build-edk2
 
+.PHONY: apply-local-patches
+apply-local-patches:
+	./scripts/apply-edk2-platforms-patches.sh
+
 .PHONY: build-edk2
-build-edk2:
+build-edk2: apply-local-patches
 	make -C src
 
 clean: clean-edk2

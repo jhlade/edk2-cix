@@ -1,0 +1,457 @@
+diff --git a/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciBusDxe.inf b/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciBusDxe.inf
+index e31325510522facf709ca7f1aa53238f02a03b67..668b2238cb11d581feb7555021ca367d08e2e0c0 100644
+--- a/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciBusDxe.inf
++++ b/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciBusDxe.inf
+@@ -62,6 +62,7 @@
+ [Packages]
+   MdePkg/MdePkg.dec
+   MdeModulePkg/MdeModulePkg.dec
++  Platform/CIX/Sky1/Sky1.dec
+ 
+ [LibraryClasses]
+   PcdLib
+@@ -75,6 +76,7 @@
+   UefiDriverEntryPoint
+   DebugLib
+   TimerLib
++  PciOptionRomPolicyLib
+ 
+ [Protocols]
+   gEfiPciHotPlugRequestProtocolGuid               ## SOMETIMES_PRODUCES
+diff --git a/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciEnumeratorSupport.c b/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciEnumeratorSupport.c
+index 8cad6111591e5e8dec9bfa9f5b0debd6176be182..cf92d287d05348f57ec5f4eda72d3858132852db 100644
+--- a/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciEnumeratorSupport.c
++++ b/Platform/CIX/Sky1/Drivers/Pci/PciBusDxe/PciEnumeratorSupport.c
+@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
+ **/
+ 
+ #include "PciBus.h"
++#include <Library/PciOptionRomPolicyLib.h>
+ 
+ extern CHAR16                          *mBarTypeStr[];
+ extern EDKII_DEVICE_SECURITY_PROTOCOL  *mDeviceSecurityProtocol;
+@@ -290,6 +291,20 @@ PciSearchDevice (
+   //
+   UpdatePciInfo (PciIoDevice, &IgnoreOptionRom);
+ 
++  if (!IgnoreOptionRom &&
++      PlatformShouldIgnorePciOptionRom (
++        Pci->Hdr.VendorId,
++        Pci->Hdr.DeviceId,
++        Pci->Hdr.ClassCode[2],
++        Pci->Hdr.ClassCode[1],
++        Bus,
++        Device,
++        Func
++        ))
++  {
++    IgnoreOptionRom = TRUE;
++  }
++
+   if (PciIoDevice->DevicePath == NULL) {
+     return EFI_OUT_OF_RESOURCES;
+   }
+diff --git a/Platform/CIX/Sky1/Include/Library/PciOptionRomPolicyLib.h b/Platform/CIX/Sky1/Include/Library/PciOptionRomPolicyLib.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..e8ccbd83691c7be13e5a37c7d2a016f5b637bb31
+--- /dev/null
++++ b/Platform/CIX/Sky1/Include/Library/PciOptionRomPolicyLib.h
+@@ -0,0 +1,42 @@
++/** @file
++  Platform policy for suppressing PCI option ROM probing.
++
++  Copyright 2026 Radxa Computer (Shenzhen) Co., Ltd. All Rights Reserved.
++
++  SPDX-License-Identifier: BSD-2-Clause-Patent
++**/
++
++#ifndef PCI_OPTION_ROM_POLICY_LIB_H_
++#define PCI_OPTION_ROM_POLICY_LIB_H_
++
++#include <Uefi.h>
++
++/**
++  Return whether PCI Bus should skip option ROM probing for a device.
++
++  The device remains fully enumerated and its resources are still assigned.
++
++  @param[in] VendorId   PCI vendor identifier.
++  @param[in] DeviceId   PCI device identifier.
++  @param[in] BaseClass  PCI base class code.
++  @param[in] SubClass   PCI subclass code.
++  @param[in] Bus        PCI bus number.
++  @param[in] Device     PCI device number.
++  @param[in] Function   PCI function number.
++
++  @retval TRUE   Skip option ROM probing.
++  @retval FALSE  Use the normal PCI Bus option ROM policy.
++**/
++BOOLEAN
++EFIAPI
++PlatformShouldIgnorePciOptionRom (
++  IN UINT16  VendorId,
++  IN UINT16  DeviceId,
++  IN UINT8   BaseClass,
++  IN UINT8   SubClass,
++  IN UINT8   Bus,
++  IN UINT8   Device,
++  IN UINT8   Function
++  );
++
++#endif
+diff --git a/Platform/CIX/Sky1/Library/PciOptionRomPolicyNullLib/PciOptionRomPolicyNullLib.c b/Platform/CIX/Sky1/Library/PciOptionRomPolicyNullLib/PciOptionRomPolicyNullLib.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..072944f8f14da397a3b638bc241d2bd2f583c563
+--- /dev/null
++++ b/Platform/CIX/Sky1/Library/PciOptionRomPolicyNullLib/PciOptionRomPolicyNullLib.c
+@@ -0,0 +1,25 @@
++/** @file
++  Default PCI option ROM policy.
++
++  Copyright 2026 Radxa Computer (Shenzhen) Co., Ltd. All Rights Reserved.
++
++  SPDX-License-Identifier: BSD-2-Clause-Patent
++**/
++
++#include <Uefi.h>
++#include <Library/PciOptionRomPolicyLib.h>
++
++BOOLEAN
++EFIAPI
++PlatformShouldIgnorePciOptionRom (
++  IN UINT16  VendorId,
++  IN UINT16  DeviceId,
++  IN UINT8   BaseClass,
++  IN UINT8   SubClass,
++  IN UINT8   Bus,
++  IN UINT8   Device,
++  IN UINT8   Function
++  )
++{
++  return FALSE;
++}
+diff --git a/Platform/CIX/Sky1/Library/PciOptionRomPolicyNullLib/PciOptionRomPolicyNullLib.inf b/Platform/CIX/Sky1/Library/PciOptionRomPolicyNullLib/PciOptionRomPolicyNullLib.inf
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4fdab2db067f605be3d7fc929ef5b7c01f4ea78
+--- /dev/null
++++ b/Platform/CIX/Sky1/Library/PciOptionRomPolicyNullLib/PciOptionRomPolicyNullLib.inf
+@@ -0,0 +1,22 @@
++## @file
++#  Default PCI option ROM policy library.
++#
++#  Copyright 2026 Radxa Computer (Shenzhen) Co., Ltd. All Rights Reserved.
++#
++#  SPDX-License-Identifier: BSD-2-Clause-Patent
++##
++
++[Defines]
++  INF_VERSION                    = 0x0001001A
++  BASE_NAME                      = PciOptionRomPolicyNullLib
++  FILE_GUID                      = 8B303B56-4440-4C87-AA3B-CD4CC50FBC28
++  MODULE_TYPE                    = BASE
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = PciOptionRomPolicyLib
++
++[Sources]
++  PciOptionRomPolicyNullLib.c
++
++[Packages]
++  MdePkg/MdePkg.dec
++  Platform/CIX/Sky1/Sky1.dec
+diff --git a/Platform/CIX/Sky1/Sky1Common.dsc.inc b/Platform/CIX/Sky1/Sky1Common.dsc.inc
+index 6edb11f9aa29f6ed078eae97b807687678312d9b..6eb0f834f6dc047ac9612a0d24b60a8426e81052 100644
+--- a/Platform/CIX/Sky1/Sky1Common.dsc.inc
++++ b/Platform/CIX/Sky1/Sky1Common.dsc.inc
+@@ -183,6 +183,7 @@
+   ConfigParamsHookLib|Silicon/CIX/Sky1/Library/ConfigParamsHookNullLib/ConfigParamsHookNullLib.inf
+   PlatformConfigParamsHookLib|Platform/CIX/Sky1/Library/PlatformConfigParamsHookNullLib/PlatformConfigParamsHookNullLib.inf
+   PlatformEnvHookLib|Platform/CIX/Sky1/Library/PlatformEnvHookNullLib/PlatformEnvHookNullLib.inf
++  PciOptionRomPolicyLib|Platform/CIX/Sky1/Library/PciOptionRomPolicyNullLib/PciOptionRomPolicyNullLib.inf
+   PlatformBootHookLib|Platform/CIX/Sky1/Library/PlatformBootHookNullLib/PlatformBootHookNullLib.inf
+ !if $(SOC_XSPI_ENABLE) == TRUE
+ !if $(STMM_SUPPORT) == TRUE
+diff --git a/Platform/Radxa/Orion/O6/Library/PciOptionRomPolicyLib/PciOptionRomPolicyLib.c b/Platform/Radxa/Orion/O6/Library/PciOptionRomPolicyLib/PciOptionRomPolicyLib.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e510b8f84f0a9034858d215f145c622112e06a9
+--- /dev/null
++++ b/Platform/Radxa/Orion/O6/Library/PciOptionRomPolicyLib/PciOptionRomPolicyLib.c
+@@ -0,0 +1,76 @@
++/** @file
++  Orion O6 PCI option ROM policy.
++
++  Copyright 2026 Radxa Computer (Shenzhen) Co., Ltd. All Rights Reserved.
++
++  SPDX-License-Identifier: BSD-2-Clause-Patent
++**/
++
++#include <Uefi.h>
++#include <IndustryStandard/Pci.h>
++#include <Library/BaseMemoryLib.h>
++#include <Library/DebugLib.h>
++#include <Library/PciOptionRomPolicyLib.h>
++#include <Library/UefiRuntimeServicesTableLib.h>
++#include <RadxaSetupVar.h>
++
++#define LSI_BROADCOM_PCI_VENDOR_ID  0x1000
++
++BOOLEAN
++EFIAPI
++PlatformShouldIgnorePciOptionRom (
++  IN UINT16  VendorId,
++  IN UINT16  DeviceId,
++  IN UINT8   BaseClass,
++  IN UINT8   SubClass,
++  IN UINT8   Bus,
++  IN UINT8   Device,
++  IN UINT8   Function
++  )
++{
++  EFI_STATUS        Status;
++  UINTN             VarSize;
++  RADXA_SETUP_DATA  RadxaSetupVar;
++
++  //
++  // Temporary broad match until the affected adapter's exact Device ID is
++  // known. Restrict it to LSI/Broadcom mass-storage controllers.
++  //
++  if ((VendorId != LSI_BROADCOM_PCI_VENDOR_ID) ||
++      (BaseClass != PCI_CLASS_MASS_STORAGE))
++  {
++    return FALSE;
++  }
++
++  ZeroMem (&RadxaSetupVar, sizeof (RadxaSetupVar));
++  VarSize = sizeof (RadxaSetupVar);
++  Status  = gRT->GetVariable (
++                   RADXA_SETUP_VAR,
++                   &gRadxaSetupVariableGuid,
++                   NULL,
++                   &VarSize,
++                   &RadxaSetupVar
++                   );
++  if (EFI_ERROR (Status) ||
++      (VarSize < OFFSET_OF (RADXA_SETUP_DATA, IgnoreLsiOptionRom) +
++                 sizeof (RadxaSetupVar.IgnoreLsiOptionRom)) ||
++      (RadxaSetupVar.IgnoreLsiOptionRom == 0))
++  {
++    return FALSE;
++  }
++
++  DEBUG ((
++    DEBUG_WARN,
++    "PCI QUIRK: skipping LSI/Broadcom option ROM for %04x:%04x "
++    "class %02x:%02x at %02x:%02x.%x\n",
++    VendorId,
++    DeviceId,
++    BaseClass,
++    SubClass,
++    Bus,
++    Device,
++    Function
++    ));
++
++  return TRUE;
++}
+diff --git a/Platform/Radxa/Orion/O6/Library/PciOptionRomPolicyLib/PciOptionRomPolicyLib.inf b/Platform/Radxa/Orion/O6/Library/PciOptionRomPolicyLib/PciOptionRomPolicyLib.inf
+new file mode 100644
+index 0000000000000000000000000000000000000000..fac462ac1e0f26aaffcefe802d5f89b4ef115e8b
+--- /dev/null
++++ b/Platform/Radxa/Orion/O6/Library/PciOptionRomPolicyLib/PciOptionRomPolicyLib.inf
+@@ -0,0 +1,31 @@
++## @file
++#  Orion O6 PCI option ROM policy library.
++#
++#  Copyright 2026 Radxa Computer (Shenzhen) Co., Ltd. All Rights Reserved.
++#
++#  SPDX-License-Identifier: BSD-2-Clause-Patent
++##
++
++[Defines]
++  INF_VERSION                    = 0x0001001A
++  BASE_NAME                      = OrionO6PciOptionRomPolicyLib
++  FILE_GUID                      = E0F08976-E127-416B-8374-133CC9806121
++  MODULE_TYPE                    = DXE_DRIVER
++  VERSION_STRING                 = 1.0
++  LIBRARY_CLASS                  = PciOptionRomPolicyLib|DXE_DRIVER UEFI_DRIVER
++
++[Sources]
++  PciOptionRomPolicyLib.c
++
++[Packages]
++  MdePkg/MdePkg.dec
++  Platform/CIX/Sky1/Sky1.dec
++  Platform/Radxa/Radxa.dec
++
++[LibraryClasses]
++  BaseMemoryLib
++  DebugLib
++  UefiRuntimeServicesTableLib
++
++[Guids]
++  gRadxaSetupVariableGuid
+diff --git a/Platform/Radxa/Orion/O6/O6.dsc b/Platform/Radxa/Orion/O6/O6.dsc
+index 4baf671527cb95746c9496fa1ebec4d52ad93d58..4b8d83cb4221f243b4f05ec4f11f4dd7173228b8 100644
+--- a/Platform/Radxa/Orion/O6/O6.dsc
++++ b/Platform/Radxa/Orion/O6/O6.dsc
+@@ -149,6 +149,7 @@
+ [LibraryClasses.common]
+   PlatformConfigParamsHookLib|Platform/Radxa/Orion/O6/Library/PlatformConfigParamsHookLib/PlatformConfigParamsHookLib.inf
+   PlatformEnvHookLib|Platform/Radxa/Orion/O6/Library/PlatformEnvHookLib/PlatformEnvHookLib.inf
++  PciOptionRomPolicyLib|Platform/Radxa/Orion/O6/Library/PciOptionRomPolicyLib/PciOptionRomPolicyLib.inf
+   RealTimeClockLib|Platform/Radxa/Library/Hym8563RealTimeClockLib/Hym8563RealTimeClockLib.inf
+ 
+   PlatformBootHookLib|Platform/CIX/Sky1/Merak/Library/PlatformBootHookLib/PlatformBootHookLib.inf
+@@ -298,6 +299,7 @@
+ #
+ ################################################################################
+ [PcdsFixedAtBuild.common]
++  gRadxaTokenSpaceGuid.PcdLsiOptionRomPolicySupported|TRUE
+   gCixPlatformTokenSpaceGuid.PcdSiliconDtbUpdateFileName|L"sky1-orion-o6.dtb"
+   gCixPlatformTokenSpaceGuid.PcdSiliconDtbUpdateEnable|TRUE
+ 
+diff --git a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigDxe.inf b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigDxe.inf
+index 7b62ea97db0a8b24e0a731e7708e4b7896af1e3c..f6bddc1d66c127ced06c19ce1b95dd5233417bdd 100644
+--- a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigDxe.inf
++++ b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigDxe.inf
+@@ -76,6 +76,7 @@
+ [FixedPcd]
+   gCixPlatformTokenSpaceGuid.PcdEcAcpiI2cEn
+   gRadxaTokenSpaceGuid.PcdUFSPowerMode
++  gRadxaTokenSpaceGuid.PcdLsiOptionRomPolicySupported
+   // Sync with Platform/CIX/Sky1/Drivers/SetupManagerDxe/SetupManagerDxe.inf
+   gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString
+   gCixTokenSpaceGuid.PcdPcieRootPort0Enable
+@@ -253,4 +254,4 @@
+   gCixPlatformTokenSpaceGuid.PcdRegisterFastBootSupport
+ 
+ [Depex]
+-  TRUE
+\ No newline at end of file
++  TRUE
+diff --git a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.uni b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.uni
+index 88b21e36807c40c76eed308a10f20cfc4d7070eb..da6e91ea48fa1cc1c57400228761765330ff1701 100644
+--- a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.uni
++++ b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.uni
+@@ -28,6 +28,9 @@
+ #string STR_ADVANCED_FORM_SET_TITLE_HELP #language en-US "Advanced Configuration, which may prevent system from booting."
+ #string STR_ADVANCED_FORM_SET_RECOVERY  #language en-US "You should have hardware recovery tool ready before changing them."
+ 
++#string STR_IGNORE_LSI_OPTION_ROM_PROMPT #language en-US "Ignore LSI/Broadcom HBA Option ROM"
++#string STR_IGNORE_LSI_OPTION_ROM_HELP  #language en-US "When enabled, skip PCI option ROM probing for LSI/Broadcom mass-storage controllers (vendor 0x1000). The controller remains enumerated and usable by an operating-system driver, but disks connected through it are unavailable to pre-boot firmware. Requires reset."
++
+ #string STR_NETWORK_STACK_PROMPT        #language en-US "Network Stack"
+ #string STR_NETWORK_STACK_PROMPT_HELP   #language en-US "Enable/Disable the network stack"
+ #string STR_IPV4_PXE_BOOT_PROMPT        #language en-US "Ipv4 Pxe Boot"
+diff --git a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.vfr b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.vfr
+index da159dcdb830ac2b5a3769f2dc555322a56d9261..a287e459c03353c93f2eac42d0c73ce34af01275 100644
+--- a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.vfr
++++ b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/PlatformConfigDxe/PlatformConfigHii.vfr
+@@ -209,6 +209,16 @@ endif;
+       prompt = STRING_TOKEN(STR_MEMORY_FORM_SET_TITLE),
+       help = STRING_TOKEN(STR_MEMORY_FORM_SET_TITLE_HELP);
+ 
++    suppressif NOT FixedPcdGetBool (PcdLsiOptionRomPolicySupported);
++      oneof varid = RadxaSetupVar.IgnoreLsiOptionRom,
++        prompt  = STRING_TOKEN(STR_IGNORE_LSI_OPTION_ROM_PROMPT),
++        help    = STRING_TOKEN(STR_IGNORE_LSI_OPTION_ROM_HELP),
++        default = 0,
++        option text = STRING_TOKEN(STR_DISABLED), value = 0, flags = RESET_REQUIRED;
++        option text = STRING_TOKEN(STR_ENABLED),  value = 1, flags = RESET_REQUIRED;
++      endoneof;
++    endif;
++
+     oneof varid = PlatformSetupVar.SmmuEnable,
+       prompt  = STRING_TOKEN(STR_ENABLE_SMMU_PROMPT),
+       help    = STRING_TOKEN(STR_ENABLE_SMMU_PROMPT_HELP),
+diff --git a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/RadxaSetupVariableInitDxe/RadxaSetupVariableInitDxe.c b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/RadxaSetupVariableInitDxe/RadxaSetupVariableInitDxe.c
+index 1e372aa0b96ef41f8d01472fb3fd5c7889ca1753..9c809b41bf6e6b59518c8ef83de22cd9e6bc6b1d 100644
+--- a/Platform/Radxa/Platforms/CIX/Sky1/Drivers/RadxaSetupVariableInitDxe/RadxaSetupVariableInitDxe.c
++++ b/Platform/Radxa/Platforms/CIX/Sky1/Drivers/RadxaSetupVariableInitDxe/RadxaSetupVariableInitDxe.c
+@@ -23,8 +23,11 @@ RadxaSetupVariableInitDxeEntry (
+   EFI_STATUS        Status = EFI_SUCCESS;
+   UINTN             VarSize;
+   RADXA_SETUP_DATA  RadxaSetupVar;
++  BOOLEAN           UpdateVariable;
+ 
+-  VarSize = sizeof (RADXA_SETUP_DATA);
++  ZeroMem (&RadxaSetupVar, sizeof (RadxaSetupVar));
++  VarSize        = sizeof (RadxaSetupVar);
++  UpdateVariable = FALSE;
+ 
+   Status = gRT->GetVariable (
+                   RADXA_SETUP_VAR,
+@@ -33,24 +36,41 @@ RadxaSetupVariableInitDxeEntry (
+                   &VarSize,
+                   &RadxaSetupVar
+                   );
+-  if (EFI_ERROR (Status)) {
+-    ZeroMem (&RadxaSetupVar, VarSize);
++  if (Status == EFI_NOT_FOUND) {
++    UpdateVariable = TRUE;
++  } else if (EFI_ERROR (Status)) {
++    //
++    // Do not overwrite a newer or otherwise unreadable variable format, but
++    // still publish the completion protocol for platform event handlers.
++    //
++    DEBUG ((DEBUG_ERROR, "%a: GetVariable failed - %r\n", __FUNCTION__, Status));
++  } else if (VarSize < sizeof (RadxaSetupVar)) {
+     //
+-    // Variable does not exist yet - create it
++    // Preserve fields from the old, shorter variable and append defaults for
++    // newly introduced fields (the destination was zero-initialized).
+     //
++    DEBUG ((
++      DEBUG_INFO,
++      "%a: migrating RadxaSetupVar from %u to %u bytes\n",
++      __FUNCTION__,
++      VarSize,
++      sizeof (RadxaSetupVar)
++      ));
++    UpdateVariable = TRUE;
++  }
++
++  if (UpdateVariable) {
+     Status = gRT->SetVariable (
+                     RADXA_SETUP_VAR,
+                     &gRadxaSetupVariableGuid,
+                     EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS,
+-                    sizeof (RADXA_SETUP_DATA),
++                    sizeof (RadxaSetupVar),
+                     &RadxaSetupVar
+                     );
+     if (EFI_ERROR (Status)) {
+       DEBUG ((DEBUG_ERROR, "%a: EfiSetVariable failed - %r\n", __FUNCTION__, Status));
+       return Status;
+     }
+-  } else {
+-    DEBUG ((DEBUG_ERROR, "%a: EfiGetVariable Success - %r\n", __FUNCTION__, Status));
+   }
+ 
+   Status = gBS->InstallMultipleProtocolInterfaces (
+diff --git a/Platform/Radxa/Platforms/CIX/Sky1/Include/RadxaSetupVar.h b/Platform/Radxa/Platforms/CIX/Sky1/Include/RadxaSetupVar.h
+index 73f4be016d1c04b3afd2af3307d32d1303974643..d70052a56356b803486a7c02a5dcfba68ce4bb5a 100644
+--- a/Platform/Radxa/Platforms/CIX/Sky1/Include/RadxaSetupVar.h
++++ b/Platform/Radxa/Platforms/CIX/Sky1/Include/RadxaSetupVar.h
+@@ -18,8 +18,9 @@ extern EFI_GUID  gRadxaSetupVariableGuid;
+ typedef struct {
+   UINT8     UFSPowerMode;
+   UINT8     EnableAcpiScmi;
++  UINT8     IgnoreLsiOptionRom;
+ } RADXA_SETUP_DATA;
+ 
+ #pragma pack()
+ 
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/Platform/Radxa/Radxa.dec b/Platform/Radxa/Radxa.dec
+index 1c10f5aad143894fc017da7d9655124b22c57602..068bfa56bc654cd14fc5f95216717684016b1583 100644
+--- a/Platform/Radxa/Radxa.dec
++++ b/Platform/Radxa/Radxa.dec
+@@ -55,3 +55,6 @@
+ 
+   gRadxaTokenSpaceGuid.PcdPdDevEcI2cBuses|{ 0xFF, 0xFF, 0xFF, 0xFF }|VOID*|0x00000009 # 0xFF: not actual pd device
+   gRadxaTokenSpaceGuid.PcdPdDevEcI2cSlaveAddresses|{ 0xFF, 0xFF, 0xFF, 0xFF }|VOID*|0x0000000A  # 0xFF: not actual pd device
++
++  # Platform exposes an LSI/Broadcom option ROM policy in Setup
++  gRadxaTokenSpaceGuid.PcdLsiOptionRomPolicySupported|FALSE|BOOLEAN|0x0000000B

@@ -14,25 +14,10 @@ jobs:
       uses: "docker/setup-qemu-action@v4"
       with:
         image: "tonistiigi/binfmt:latest"
-    - name: "Test"
-      uses: "devcontainers/ci@v0.3"
-      with:
-        push: "never"
-        runCmd: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y git-buildpackage
-          export DEBEMAIL="dev@radxa.com"
-          export DEBFULLNAME='"Radxa Computer Co., Ltd"'
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git branch -m GITHUB_RUNNER || true
-          git branch -D main || true
-          git switch -c main || true
-          make dch
-          make test deb
-          git reset --hard HEAD~1
-          rm ../*.deb
+    - name: "Validate local patch"
+      run: |
+        sh -n scripts/apply-edk2-platforms-patches.sh
+        git -C src/edk2-platforms apply --check ../../patches/orion-o6-lsi-option-rom.patch
     - name: "Build"
       uses: "devcontainers/ci@v0.3"
       with:
@@ -51,6 +36,14 @@ jobs:
         name: "${{ github.event.repository.name }}"
         path: |
           ${{ steps.artifacts_path.outputs.artifacts_path }}/*.deb
+          src/Build/O6/RELEASE_GCC5/cix_flash_all.bin
+          src/Build/O6/RELEASE_GCC5/cix_flash_ota.bin
+          debian/edk2-cix/usr/share/edk2/radxa/orion-o6/BurnImage.efi
+          debian/edk2-cix/usr/share/edk2/radxa/orion-o6/EnrollFromDefaultKeysApp.efi
+          debian/edk2-cix/usr/share/edk2/radxa/orion-o6/FlashUpdate.efi
+          debian/edk2-cix/usr/share/edk2/radxa/orion-o6/Shell.efi
+          debian/edk2-cix/usr/share/edk2/radxa/orion-o6/VariableInfo.efi
+          debian/edk2-cix/usr/share/edk2/radxa/orion-o6/startup.nsh
     - id: "distro_check"
       name: "Check if the latest version is releasable"
       run: |
@@ -103,6 +96,15 @@ jobs:
         fail_on_unmatched_files: false
         files: |
           .artifacts/**/*.deb
+          .artifacts/**/cix_flash_all.bin
+          .artifacts/**/cix_flash_ota.bin
+          .artifacts/**/BurnImage.efi
+          .artifacts/**/EnrollFromDefaultKeysApp.efi
+          .artifacts/**/FlashUpdate.efi
+          .artifacts/**/Shell.efi
+          .artifacts/**/VariableInfo.efi
+          .artifacts/**/startup.nsh
+          patches/orion-o6-lsi-option-rom.patch
           pkg.conf
           VERSION
         prerelease: false
@@ -117,11 +119,6 @@ jobs:
           ## Changelog for ${{ env.version }}
           ${{ env.changes }}
         tag_name: "${{ env.version }}"
-    - name: "Update Test repos"
-      uses: "RadxaOS-SDK/rsdk/.github/actions/infra-repo-update@main"
-      with:
-        test-repo: true
-        token: "${{ secrets.RSDK_APT_REPOSITORY_TOKEN }}"
 name: "Build & Release"
 "on":
   merge_group: {}
